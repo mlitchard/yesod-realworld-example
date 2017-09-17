@@ -26,7 +26,7 @@ ip-from-header: "_env:IP_FROM_HEADER:false"
 database:
   user:     "_env:PGUSER:yrw"
   password: "_env:PGPASS:konstrUCT&"
-  host:     "_env:PGHOST:localhost"
+  host:     "_env:PGHOST:172.18.2"
   port:     "_env:PGPORT:5432"
   # See config/test-settings.yml for an override during tests
   database: "_env:PGDATABASE:mediumdb"
