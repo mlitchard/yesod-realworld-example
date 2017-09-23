@@ -1,5 +1,5 @@
 {-# LANGUAGE PackageImports #-}
-import "yesod-realworld-example" Application (develMain)
+import Application (develMain)
 import Prelude (IO)
 
 main :: IO ()

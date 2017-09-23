@@ -4,23 +4,20 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Foundation where
 
 import Import.NoFoundation
+
+import Data.Aeson
 import Database.Persist.Sql (ConnectionPool, runSqlPool)
-import Text.Hamlet          (hamletFile)
 import Text.Jasmine         (minifym)
 
--- Used only when in "auth-dummy-login" setting is enabled.
-import Yesod.Auth.Dummy
 
-import Yesod.Auth.OpenId    (authOpenId, IdentifierType (Claimed))
 import Yesod.Default.Util   (addStaticContentExternal)
 import Yesod.Core.Types     (Logger)
 import qualified Yesod.Core.Unsafe as Unsafe
-import qualified Data.CaseInsensitive as CI
-import qualified Data.Text.Encoding as TE
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
@@ -34,15 +31,154 @@ data App = App
     , appLogger      :: Logger
     }
 
-data MenuItem = MenuItem
-    { menuItemLabel :: Text
-    , menuItemRoute :: Route App
-    , menuItemAccessCallback :: Bool
-    }
+-- | Request Bodies
 
-data MenuTypes
-    = NavbarLeft MenuItem
-    | NavbarRight MenuItem
+-- | Authentication
+-- POST /api/users/login
+-- {
+--    "user":{
+--      "email": "jake@jake.jake",
+--      "password": "jakejake"
+--    }
+-- }
+-- Required fields: email, password
+
+data User = User
+  { email    :: Text
+  , password :: Text
+  } deriving Show
+
+instance FromJSON User where
+  parseJSON = withObject "user" $ \o -> do
+    authUser <- o .: "user"
+    email    <- authUser .: "email"
+    password <- authUser .: "password"
+    return User{..}
+
+-- | Registration
+-- POST /api/users
+-- {
+--    "user":{
+--      "username": "Jacob",
+--      "email": "jake@jake.jake",
+--      "password": "jakejake"
+--    }
+-- }
+-- Required fields: email, username, password
+
+data RegUser = RegUser
+  { username :: Text
+  , user :: User
+  } deriving Show
+
+instance FromJSON RegUser where
+  parseJSON = withObject "RegUser" $ \o -> do
+    regUser  <- o .: "user"
+    username <- regUser .: "username"
+    email    <- regUser .: "email"
+    password <- regUser .: "password"
+    let user = User email password
+    return $ RegUser username user 
+
+-- | Update User
+-- PUT /api/user
+-- {
+--    "user":{
+--      "email": "jake@jake.jake",
+--      "bio": "I like to skateboard",
+--      "image": "https://i.stack.imgur.com/xHWG8.jpg"
+--    }
+-- }
+-- Accepted fields: email, username, password, image, bio
+
+data UpdateUser = UpdateUser
+  { email_m    :: Maybe Text
+  , bio_m      :: Maybe Text
+  , image_m    :: Maybe Text
+  , username_m :: Maybe Text
+  , password_m :: Maybe Text
+  } deriving Show
+
+instance FromJSON UpdateUser where
+  parseJSON = withObject "UpdateUser" $ \o -> do
+    userUpdate <- o .: "user"
+    email_m    <- (Just <$> userUpdate .: "email")    <|> pure Nothing
+    bio_m      <- (Just <$> userUpdate .: "bio")      <|> pure Nothing
+    image_m    <- (Just <$> userUpdate .: "image")    <|> pure Nothing
+    username_m <- (Just <$> userUpdate .: "username") <|> pure Nothing
+    password_m <- (Just <$> userUpdate .: "password") <|> pure Nothing
+    return UpdateUser{..}
+
+-- | Create Article
+-- POST /api/articles
+-- {
+--   "article": {
+--     "title": "How to train your dragon",
+--     "description": "Ever wonder how?",
+--     "body": "You have to believe",
+--     "tagList": ["reactjs", "angularjs", "dragons"]
+--   }
+-- }
+-- Required fields: title, description, body
+-- Optional fields: tagList as an array of Strings
+
+data NewArticle = NewArticle
+  { title_ca       :: Text
+  , desc_ca :: Text
+  , body_ca        :: Text
+  , tagList_ca_m   :: Maybe [Text]
+  } deriving Show
+
+instance FromJSON NewArticle where
+  parseJSON = withObject "CreateArticle" $ \o -> do
+    article      <- o .: "article"
+    title_ca     <- article .: "title"
+    desc_ca      <- article .: "description"
+    body_ca      <- article .: "body"
+    tagList_ca_m <- (Just <$> article .: "tagList") <|> pure Nothing
+    return NewArticle{..}
+
+-- | Update Article
+-- PUT /api/articles/:slug
+-- {
+--    "article": {
+--      "title": "Did you train your dragon?"
+--    }
+-- }
+-- The slug also gets updated when the title is changed
+
+data ArticleUpdate = ArticleUpdate
+  { title_au :: Maybe Text
+  , desc_au  :: Maybe Text
+  , body_au  :: Maybe Text
+  , slug_au  :: Maybe Text
+  } deriving Show
+
+instance FromJSON ArticleUpdate where
+  parseJSON = withObject "ArticleUpdate" $ \o -> do
+    articleUpdate <- o .: "article"
+    title_au      <- (Just <$> articleUpdate .: "title")       <|> pure Nothing
+    desc_au       <- (Just <$> articleUpdate .: "description") <|> pure Nothing 
+    body_au       <- (Just <$> articleUpdate .: "body")        <|> pure Nothing
+    slug_au       <- (Just <$> articleUpdate .: "slug")        <|> pure Nothing
+    return ArticleUpdate{..}
+
+-- | Add Comments to article
+-- POST /api/articles/:slug/comments
+-- {
+--   "comment": {
+--     "body": "His name was my name too."
+--   }
+-- }
+-- Required fields: body
+
+newtype Comment = Comment {commentBody :: Text} deriving Show
+
+instance FromJSON Comment where
+  parseJSON = withObject "Comment" $ \o -> do
+    comment <- o .: "comment"
+    commentBody <- comment .: "body"
+    return Comment{..}
 
 -- This is where we define all of the routes in our application. For a full
 -- explanation of the syntax, please see:
@@ -57,9 +193,6 @@ data MenuTypes
 -- type Handler = HandlerT App IO
 -- type Widget = WidgetT App IO ()
 mkYesodData "App" $(parseRoutesFile "config/routes")
-
--- | A convenient synonym for creating forms.
-type Form x = Html -> MForm (HandlerT App IO) (FormResult x, Widget)
 
 -- Please see the documentation for the Yesod typeclass. There are a number
 -- of settings which can be configured by overriding methods here.
@@ -85,70 +218,6 @@ instance Yesod App where
     -- To add it, chain it together with the defaultMiddleware: yesodMiddleware = defaultYesodMiddleware . defaultCsrfMiddleware
     -- For details, see the CSRF documentation in the Yesod.Core.Handler module of the yesod-core package.
     yesodMiddleware = defaultYesodMiddleware
-
-    defaultLayout widget = do
-        master <- getYesod
-        mmsg <- getMessage
-
-        muser <- maybeAuthPair
-        mcurrentRoute <- getCurrentRoute
-
-        -- Get the breadcrumbs, as defined in the YesodBreadcrumbs instance.
-        (title, parents) <- breadcrumbs
-
-        -- Define the menu items of the header.
-        let menuItems =
-                [ NavbarLeft $ MenuItem
-                    { menuItemLabel = "Home"
-                    , menuItemRoute = HomeR
-                    , menuItemAccessCallback = True
-                    }
-                , NavbarLeft $ MenuItem
-                    { menuItemLabel = "Profile"
-                    , menuItemRoute = ProfileR
-                    , menuItemAccessCallback = isJust muser
-                    }
-                , NavbarRight $ MenuItem
-                    { menuItemLabel = "Login"
-                    , menuItemRoute = AuthR LoginR
-                    , menuItemAccessCallback = isNothing muser
-                    }
-                , NavbarRight $ MenuItem
-                    { menuItemLabel = "Logout"
-                    , menuItemRoute = AuthR LogoutR
-                    , menuItemAccessCallback = isJust muser
-                    }
-                ]
-
-        let navbarLeftMenuItems = [x | NavbarLeft x <- menuItems]
-        let navbarRightMenuItems = [x | NavbarRight x <- menuItems]
-
-        let navbarLeftFilteredMenuItems = [x | x <- navbarLeftMenuItems, menuItemAccessCallback x]
-        let navbarRightFilteredMenuItems = [x | x <- navbarRightMenuItems, menuItemAccessCallback x]
-
-        -- We break up the default layout into two components:
-        -- default-layout is the contents of the body tag, and
-        -- default-layout-wrapper is the entire page. Since the final
-        -- value passed to hamletToRepHtml cannot be a widget, this allows
-        -- you to use normal widget features in default-layout.
-
-        pc <- widgetToPageContent $ do
-            addStylesheet $ StaticR css_bootstrap_css
-            $(widgetFile "default-layout")
-        withUrlRenderer $(hamletFile "templates/default-layout-wrapper.hamlet")
-
-    -- The page to be redirected to when authentication is required.
-    authRoute _ = Just $ AuthR LoginR
-
-    -- Routes not requiring authentication.
-    isAuthorized (AuthR _) _ = return Authorized
-    isAuthorized CommentR _ = return Authorized
-    isAuthorized HomeR _ = return Authorized
-    isAuthorized FaviconR _ = return Authorized
-    isAuthorized RobotsR _ = return Authorized
-    isAuthorized (StaticR _) _ = return Authorized
-
-    isAuthorized ProfileR _ = isAuthenticated
 
     -- This function creates static content files in the static folder
     -- and names them based on a hash of their content. This allows
@@ -178,13 +247,6 @@ instance Yesod App where
 
     makeLogger = return . appLogger
 
--- Define breadcrumbs.
-instance YesodBreadcrumbs App where
-  breadcrumb HomeR = return ("Home", Nothing)
-  breadcrumb (AuthR _) = return ("Login", Just HomeR)
-  breadcrumb ProfileR = return ("Profile", Just HomeR)
-  breadcrumb  _ = return ("home", Nothing)
-
 -- How to run database actions.
 instance YesodPersist App where
     type YesodPersistBackend App = SqlBackend
@@ -194,46 +256,6 @@ instance YesodPersist App where
 instance YesodPersistRunner App where
     getDBRunner = defaultGetDBRunner appConnPool
 
-instance YesodAuth App where
-    type AuthId App = UserId
-
-    -- Where to send a user after successful login
-    loginDest _ = HomeR
-    -- Where to send a user after logout
-    logoutDest _ = HomeR
-    -- Override the above two destinations when a Referer: header is present
-    redirectToReferer _ = True
-
-    authenticate creds = runDB $ do
-        x <- getBy $ UniqueUser $ credsIdent creds
-        case x of
-            Just (Entity uid _) -> return $ Authenticated uid
-            Nothing -> Authenticated <$> insert User
-                { userIdent = credsIdent creds
-                , userPassword = Nothing
-                }
-
-    -- You can add other plugins like Google Email, email or OAuth here
-    authPlugins app = [authOpenId Claimed []] ++ extraAuthPlugins
-        -- Enable authDummy login if enabled.
-        where extraAuthPlugins = [authDummy | appAuthDummyLogin $ appSettings app]
-
-    authHttpManager = getHttpManager
-
--- | Access function to determine if a user is logged in.
-isAuthenticated :: Handler AuthResult
-isAuthenticated = do
-    muid <- maybeAuthId
-    return $ case muid of
-        Nothing -> Unauthorized "You must login to access this page"
-        Just _ -> Authorized
-
-instance YesodAuthPersist App
-
--- This instance is required to use forms. You can modify renderMessage to
--- achieve customized and internationalized form validation messages.
-instance RenderMessage App FormMessage where
-    renderMessage _ _ = defaultFormMessage
 
 -- Useful when writing code that is re-usable outside of the Handler context.
 -- An example is background jobs that send email.
