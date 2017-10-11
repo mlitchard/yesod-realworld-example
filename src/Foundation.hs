@@ -103,7 +103,8 @@ toProfileJSON (Profile{..}) username following = object ["profile" .= profile]
 toArticleJSON :: SiteArticle -> ProfileJSON -> Value
 toArticleJSON sArticle (Object pObject)  = object [ "article" .= article]
   where
-    article = saObject `H.union` pObject
+    ptoAuthor = H.fromList $ map (\kv@(name,profile) -> if name == ("profile" :: Text) then (("author" :: Text),profile) else kv) $ H.toList pObject
+    article = saObject `H.union` ptoAuthor -- pObject
     (Object saObject) = toJSON sArticle
 toArticleJSON _ _ = error ("toArticleJSON Failed: malformed ProfileJSON")
                                                 
