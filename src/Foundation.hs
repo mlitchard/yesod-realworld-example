@@ -10,10 +10,12 @@ module Foundation where
 
 import Import.NoFoundation
 
+
 import Data.Aeson
+import qualified Data.HashMap.Lazy as H
 import Database.Persist.Sql (ConnectionPool, runSqlPool)
 import Text.Jasmine         (minifym)
-
+import qualified Data.ByteString.Lazy as BL
 
 import Yesod.Default.Util   (addStaticContentExternal)
 import Yesod.Core.Types     (Logger)
@@ -31,6 +33,80 @@ data App = App
     , appLogger      :: Logger
     }
 
+-- | Response Bodies
+
+-- | User
+-- {
+--   "user": {
+--     "email": "jake@jake.jake",
+--     "token": "jwt.token.here",
+--     "username": "jake",
+--     "bio": "I work at statefarm",
+--     "image": null
+--   }
+-- }
+
+type EmailAddress  = Text
+type Username = Text
+
+toUserJSON :: Profile -> EmailAddress -> Username  -> Value
+toUserJSON (Profile{..}) address  username = object ["user" .= user]
+  where
+    user = object [ "email"    .= address
+                  , "username" .= username
+                  , "bio"      .= profileBio
+                  , "image"    .= profilePictureURL
+                  ]
+
+-- | Profile
+-- {
+--   "profile": {
+--     "username": "jake",
+--     "bio": "I work at statefarm",
+--     "image": "https://static.productionready.io/images/smiley-cyrus.jpg",
+--     "following": false
+--   }
+-- }
+
+type ProfileJSON = Value
+toProfileJSON :: Profile -> Username -> Bool -> ProfileJSON
+toProfileJSON (Profile{..}) username following = object ["profile" .= profile]
+  where
+    profile = object [ "username"  .= username
+                     , "bio"       .= profileBio
+                     , "image"     .= profilePictureURL
+                     , "following" .= following
+                     ]
+
+-- | Single Article
+-- {
+--   "article": {
+--     "slug": "how-to-train-your-dragon",
+--     "title": "How to train your dragon",
+--     "description": "Ever wonder how?",
+--     "body": "It takes a Jacobian",
+--     "tagList": ["dragons", "training"],
+--     "createdAt": "2016-02-18T03:22:56.637Z",
+--     "updatedAt": "2016-02-18T03:48:35.824Z",
+--     "favorited": false,
+--     "favoritesCount": 0,
+--     "author": {
+--       "username": "jake",
+--       "bio": "I work at statefarm",
+--       "image": "https://i.stack.imgur.com/xHWG8.jpg",
+--       "following": false
+--     }
+--   }
+-- }
+
+  
+toArticleJSON :: SiteArticle -> ProfileJSON -> Value
+toArticleJSON sArticle (Object pObject)  = object [ "article" .= article]
+  where
+    article = saObject `H.union` pObject
+    (Object saObject) = toJSON sArticle
+toArticleJSON _ _ = error ("toArticleJSON Failed: malformed ProfileJSON")
+                                                
 -- | Request Bodies
 
 -- | Authentication
@@ -43,17 +119,17 @@ data App = App
 -- }
 -- Required fields: email, password
 
-data User = User
-  { email    :: Text
+data UserAuthReq = UserAuthReq
+  { email :: Text
   , password :: Text
   } deriving Show
 
-instance FromJSON User where
+instance FromJSON UserAuthReq where
   parseJSON = withObject "user" $ \o -> do
     authUser <- o .: "user"
     email    <- authUser .: "email"
     password <- authUser .: "password"
-    return User{..}
+    return UserAuthReq {..}
 
 -- | Registration
 -- POST /api/users
@@ -67,18 +143,22 @@ instance FromJSON User where
 -- Required fields: email, username, password
 
 data RegUser = RegUser
-  { username :: Text
-  , user :: User
+  { username_ru :: Text
+  , user_ru :: UserAuth
+  , bio_ru  :: Maybe Text
+  , image_ru :: Maybe Text
   } deriving Show
 
 instance FromJSON RegUser where
   parseJSON = withObject "RegUser" $ \o -> do
     regUser  <- o .: "user"
-    username <- regUser .: "username"
-    email    <- regUser .: "email"
-    password <- regUser .: "password"
-    let user = User email password
-    return $ RegUser username user 
+    username_ru <- regUser .: "username"
+    email       <- regUser .: "email"
+    password    <- regUser .: "password"
+    bio_ru      <- regUser .:? "bio"
+    image_ru    <- regUser .:? "image"
+    let user = UserAuth email password
+    return $ RegUser username_ru user bio_ru image_ru 
 
 -- | Update User
 -- PUT /api/user
@@ -180,6 +260,9 @@ instance FromJSON Comment where
     commentBody <- comment .: "body"
     return Comment{..}
 
+-- | Response Bodies
+-- SiteUser is generated with Template Haskell see config/models
+                        
 -- This is where we define all of the routes in our application. For a full
 -- explanation of the syntax, please see:
 -- http://www.yesodweb.com/book/routing-and-handlers

@@ -7,6 +7,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE RecordWildCards            #-} 
 module Model where
 
 import ClassyPrelude.Yesod
@@ -18,3 +19,13 @@ import Database.Persist.Quasi
 -- http://www.yesodweb.com/book/persistent/
 share [mkPersist sqlSettings, mkMigrate "migrateAll"]
     $(persistFileWith lowerCaseSettings "config/models")
+
+instance ToJSON SiteArticle where
+    toJSON p = object ["slug"          .= siteArticleSlug p
+                      ,"title"         .= siteArticleTitle p
+                      ,"description"   .= siteArticleDescription p
+                      ,"body"          .= siteArticleBody p
+                      ,"tagList"       .= siteArticleTagList p
+                      ,"createdAt"     .= siteArticleCreatedAt p
+                      ,"updatedAt"     .= siteArticleUpdatedAt p
+                      ,"favoriteCount" .= siteArticleFavoriteCount p]

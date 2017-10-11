@@ -1,12 +1,42 @@
-SiteUser
-    username Text
-    password Text
-    bio      Text
-    pictureURL Text
-    UniqueUser username
-    deriving Typeable
-    
+UserAuth
+  username Text
+  password Text
+  UniqueUsername username
+  deriving Show
+
+Profile
+  profileId UserAuthId
+  bio        Text Maybe
+  pictureURL Text Maybe
+  UniquePID profileId
+  deriving Show
+  
 Email
-    email Text
-    userId SiteUserId
-    UniqueEmail email
+  emailId UserAuthId
+  email Text
+  UniqueEmailId email
+  deriving Show
+
+FollowingAuthors
+  followerId UserAuthId
+  followed [UserAuthId]
+  UniqueFollowerId followerId
+  deriving Show
+
+FavoritedArticle
+  authorId Int
+  
+SiteArticle
+  siteArticleId UserAuthId
+  slug              Text
+  title             Text
+  description       Text
+  body              Text
+  tagList           [Text]
+  createdAt         UTCTime
+  updatedAt         UTCTime
+  favoriteCount     Int
+  UniqueSlug slug
+  deriving Show
+  
+  
