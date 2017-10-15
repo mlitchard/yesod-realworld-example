@@ -13,6 +13,7 @@ import Import.NoFoundation
 
 import Data.Aeson
 import qualified Data.HashMap.Lazy as H
+import qualified Data.Text as T
 import Database.Persist.Sql (ConnectionPool, runSqlPool)
 import Text.Jasmine         (minifym)
 import qualified Data.ByteString.Lazy as BL
@@ -47,7 +48,10 @@ data App = App
 -- }
 
 type EmailAddress  = Text
-type Username = Text
+type Username      = Text
+type Slug          = Text
+type Cid           = Int
+
 
 toUserJSON :: Profile -> EmailAddress -> Username  -> Value
 toUserJSON (Profile{..}) address  username = object ["user" .= user]
@@ -99,15 +103,109 @@ toProfileJSON (Profile{..}) username following = object ["profile" .= profile]
 --   }
 -- }
 
-  
-toArticleJSON :: SiteArticle -> ProfileJSON -> Value
-toArticleJSON sArticle (Object pObject)  = object [ "article" .= article]
+toArticlesJSON :: [(SiteArticleJSON,ProfileJSON)] -> Value
+toArticlesJSON articleProfilePairs = object [ "articles" .= apJSON
+                                            , "articlesCount" .= length articleProfilePairs]
   where
-    ptoAuthor = H.fromList $ map (\kv@(name,profile) -> if name == ("profile" :: Text) then (("author" :: Text),profile) else kv) $ H.toList pObject
-    article = saObject `H.union` ptoAuthor -- pObject
-    (Object saObject) = toJSON sArticle
-toArticleJSON _ _ = error ("toArticleJSON Failed: malformed ProfileJSON")
-                                                
+    apJSON = map (toArticleJSON T.empty) articleProfilePairs
+
+type Label = Text
+type SiteArticleJSON = Value
+
+toArticleJSON :: Label -> (SiteArticleJSON,ProfileJSON) -> Value
+toArticleJSON label (Object aObject, (Object pObject)) =
+  if (label == T.empty) then nolabel else labeled
+  where
+    nolabel = Object $ aObject `H.union` pToAuthor
+    pToAuthor = H.fromList $ map (\kv@(name,profile) -> if name == ("profile" :: Text)
+                                                        then (("author" :: Text),profile)
+                                                        else kv) $ H.toList pObject
+    labeled = object ["article" .= article]
+    article = aObject `H.union` pToAuthor
+toArticleJSON _ _ = error ("error: toArticleJSON malformed json")
+
+-- |
+-- {
+--  "comments": [{
+--    "id": 1,
+--    "createdAt": "2016-02-18T03:22:56.637Z",
+--    "updatedAt": "2016-02-18T03:22:56.637Z",
+--    "body": "It takes a Jacobian",
+--    "author": {
+--      "username": "jake",
+--      "bio": "I work at statefarm",
+--      "image": "https://i.stack.imgur.com/xHWG8.jpg",
+--      "following": false
+--    }
+--  }]
+-- }
+type SiteCommentJSON = Value
+
+toCommentsJSON :: [(SiteCommentJSON,ProfileJSON)] -> Value
+toCommentsJSON commentProfilePairs = object [ "comments" .= cpJSON ]
+  where
+    cpJSON = map (toCommentJSON T.empty) commentProfilePairs
+
+toCommentJSON :: Label -> (SiteCommentJSON,ProfileJSON) -> Value
+toCommentJSON label (Object cObject, Object pObject) =
+  if (label == T.empty) then comment else labeled
+  where
+    comment = Object $ cObject `H.union` pObject
+    labeled = object ["comment" .= comment]
+toCommentJSON _ _ = error ("error: toCommentJSON malformed json")    
+
+data UserError
+  = BadAuth
+  | UserNotFound
+  | NameTaken
+  | EmailTaken
+  deriving Show
+
+data ArticleError
+  = ArticleNotFound
+  | ArticleNotAllowed
+  deriving Show
+
+data CommentError
+  = CommentNotFound
+  | SlugNotFound
+  | CommentNotAllowed
+  deriving Show
+
+data Error
+  = CommentErrorWrapper CommentError
+  | UserErrorWrapper UserError
+  | ArticleErrorWrapper ArticleError
+  deriving Show
+
+instance ToJSON Error where      
+  toJSON (CommentErrorWrapper cerr) =
+    let errmsg :: Text
+        errmsg  = case cerr of
+          CommentNotFound   -> "comment not found"
+          SlugNotFound      -> "slug not found"
+          CommentNotAllowed -> "comment not allowed"
+    in toJSON errmsg      
+  toJSON (UserErrorWrapper uerr)    =
+    let errmsg :: Text
+        errmsg = case uerr of
+          BadAuth      -> "bad authorization"
+          UserNotFound -> "user not found"
+          NameTaken    -> "name already taken"
+          EmailTaken   -> "email address already taken"
+    in toJSON errmsg      
+  toJSON (ArticleErrorWrapper aerr) =
+    let errmsg :: Text
+        errmsg = case aerr of
+          ArticleNotFound   -> "article not found"
+          ArticleNotAllowed -> "article not allowed"
+    in toJSON errmsg      
+
+toErrorsJSON :: [Error] -> Value
+toErrorsJSON errs = object [ "errors" .= object [ "body" .= errmsgsJSON]]
+  where
+    errmsgsJSON = toJSON <$> errs
+    
 -- | Request Bodies
 
 -- | Authentication

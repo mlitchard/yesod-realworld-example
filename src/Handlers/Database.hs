@@ -7,6 +7,7 @@ import Import
 testUserAuth :: Handler UserAuthId
 testUserAuth = runDB $ insert $ UserAuth "bob" "bobpass"
 
+
 testProfile :: UserAuthId -> Handler ProfileId
 testProfile uid = runDB $ insert $ Profile uid (Just "bob likes haskell") Nothing 
   

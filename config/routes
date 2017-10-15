@@ -1,2 +1,27 @@
 /static StaticR Static appStatic
 
+/api/users/login AuthR POST
+/api/users       UsersR POST
+/api/user        UserR GET PUT
+
+/api/profiles/#Username ProfileR GET
+/api/profiles/#Username/follow FollowR POST DELETE
+
+/api/articles ArticlesR POST
+
+!/api/articles/feed FeedR GET
+!/api/articles/#Slug ArticleR GET PUT DELETE
+
+/api/articles/#Slug/comments CommentR POST GET
+
+/api/articles/#Slug/comments/#Cid ACommentR DELETE
+
+/api/articles/#Slug/favorite FavoriteR POST DELETE
+
+/api/tags TagsR GET
+
+
+
+
+
+

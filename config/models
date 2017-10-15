@@ -25,7 +25,7 @@ FollowingAuthors
 
 FavoritedArticle
   authorId Int
-  
+
 SiteArticle
   siteArticleId UserAuthId
   slug              Text
@@ -38,5 +38,17 @@ SiteArticle
   favoriteCount     Int
   UniqueSlug slug
   deriving Show
-  
+
+ArticleComment
+  artcomId               Int
+  siteArticleId          SiteArticleId
+  createdAt              UTCTime
+  updatedAt              UTCTime
+  body                   Text
+  authorID               UserAuthId
+  deriving Show
+
+Tags
+ tags [Text]
+ deriving Show
   
