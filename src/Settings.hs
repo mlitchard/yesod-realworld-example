@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE DeriveGeneric     #-}
 -- | Settings are centralized, as much as possible, into this file. This
 -- includes database connection settings, static file locations, etc.
 -- In addition, you can configure a number of different aspects of Yesod
@@ -12,13 +13,16 @@ module Settings where
 
 import           ClassyPrelude.Yesod
 import qualified Control.Exception           as Exception
-import           Data.Aeson                  (Result (..), fromJSON, withObject,
+import           Data.Aeson                  (Result (..), fromJSON, Object, withObject,
                                               (.!=), (.:?))
+import qualified Data.ByteString             as B
+import qualified Data.ByteString.Base64      as B64
 import           Data.FileEmbed              (embedFile)
-import           Data.Yaml                   (decodeEither')
+import           Data.Yaml                   (decodeEither', Parser)
 import           Database.Persist.Postgresql (PostgresConf)
 import           Language.Haskell.TH.Syntax  (Exp, Name, Q)
 import           Network.Wai.Handler.Warp    (HostPreference)
+import           Yesod.Default.Config
 import           Yesod.Default.Config2       (applyEnvValue, configSettingsYml)
 import           Yesod.Default.Util          (WidgetFileSettings,
                                               widgetFileNoReload,
@@ -35,6 +39,7 @@ data AppSettings = AppSettings
     , appRoot                   :: Maybe Text
     -- ^ Base for all generated URLs. If @Nothing@, determined
     -- from the request headers.
+    , appExtra                  :: Extra
     , appHost                   :: HostPreference
     -- ^ Host/interface the server should bind to.
     , appPort                   :: Int
@@ -78,7 +83,7 @@ instance FromJSON AppSettings where
         appHost                   <- fromString <$> o .: "host"
         appPort                   <- o .: "port"
         appIpFromHeader           <- o .: "ip-from-header"
-
+        appExtra                  <- o .: "extra"
         appDetailedRequestLogging <- o .:? "detailed-logging" .!= defaultDev
         appShouldLogAll           <- o .:? "should-log-all"   .!= defaultDev
         appReloadTemplates        <- o .:? "reload-templates" .!= defaultDev
@@ -145,3 +150,16 @@ combineScripts :: Name -> [Route Static] -> Q Exp
 combineScripts = combineScripts'
     (appSkipCombining compileTimeAppSettings)
     combineSettings
+
+data Extra = Extra { extraBasicAuthPlaceholder :: Text } deriving Generic
+
+instance FromJSON Extra
+
+{-
+parseExtra :: DefaultEnv -> Object -> Parser Extra
+parseExtra _ o = do
+  authName    <- (encodeUtf8 <$> o .: "authName")
+  authPwd     <- (encodeUtf8 <$> o .: "authPwd")
+  let authStr = B.concat ["Basic ", (B64.encode (B.concat [authName, ":", authPwd]))]
+  return $ Extra { extraBasicAuthPlaceholder = authStr }
+-}

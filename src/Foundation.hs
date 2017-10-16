@@ -8,18 +8,22 @@
 
 module Foundation where
 
-import Import.NoFoundation
+import Import.NoFoundation 
 
 
 import Data.Aeson
 import qualified Data.HashMap.Lazy as H
 import qualified Data.Text as T
+import Data.Text.Encoding (encodeUtf8)
+import qualified Data.Text.Encoding as TE
 import Database.Persist.Sql (ConnectionPool, runSqlPool)
 import Text.Jasmine         (minifym)
 import qualified Data.ByteString.Lazy as BL
 
 import Yesod.Default.Util   (addStaticContentExternal)
 import Yesod.Core.Types     (Logger)
+import Yesod.Default.Config hiding (appRoot, appExtra)
+import Network.Wai.Internal as Wai 
 import qualified Yesod.Core.Unsafe as Unsafe
 
 -- | The foundation datatype for your application. This can be a good place to
@@ -428,7 +432,20 @@ instance Yesod App where
             || level == LevelError
 
     makeLogger = return . appLogger
-
+{-
+instance Yesod App where
+    approot = ApprootMaster $ appRoot . settings
+    authRoute _ = Just AuthErrorR
+    isAuthorized AuthErrorR _          = return Authorized
+    isAuthorized (StaticR _) _         = return Authorized
+    isAuthorized FaviconR _            = return Authorized
+    isAuthorized RobotsR _             = return Authorized
+    isAuthorized (IntakeR _) _         = return Authorized
+    isAuthorized (InterpreterR _) _    = return Authorized
+    isAuthorized (ConnectClientR _) _  = return Authorized
+    isAuthorized (MWIMainlineR _) _    = return Authorized
+    isAuthorized _ _                   = httpBasicAuth
+-}
 -- How to run database actions.
 instance YesodPersist App where
     type YesodPersistBackend App = SqlBackend
@@ -455,3 +472,21 @@ unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger
 -- https://github.com/yesodweb/yesod/wiki/Sending-email
 -- https://github.com/yesodweb/yesod/wiki/Serve-static-files-from-a-separate-domain
 -- https://github.com/yesodweb/yesod/wiki/i18n-messages-in-the-scaffolding
+
+getExtra :: Handler Extra
+getExtra = do
+  master <- getYesod
+  return $ appExtra $ appSettings master
+--  fmap (appExtra . appSettings) getYesod
+
+httpBasicAuth :: HandlerT App IO AuthResult
+httpBasicAuth = do
+  request <- waiRequest
+  conf    <- getExtra
+  return $ case lookup "Authorization" (Wai.requestHeaders request) of
+             Just x  -> if (x == encodedPlaceholder conf)
+                        then Authorized
+                        else AuthenticationRequired
+             Nothing -> AuthenticationRequired
+  where
+    encodedPlaceholder conf = TE.encodeUtf8 $ extraBasicAuthPlaceholder conf
